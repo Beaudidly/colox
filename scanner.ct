@@ -128,6 +128,7 @@
     (match (list:findindex (fn (x) (== x #\")) lst)
       ((Some i)
        (match (list:split-around i lst)
+
          ((Tuple3 before _ after)
           (Some (Tuple (the String (into before)) after)))))
       ((None) None)))
@@ -191,7 +192,8 @@
          ((char:ascii-digit? c)
           (match (consume-num line (Cons c rest))
             ((Ok (Tuple3 lexeme val rest))
-             (emit (Token TT-Number lexeme (LT-Number val) line) line rest))))
+             (emit (Token TT-Number lexeme (LT-Number val) line) line rest))
+            (_ (Err (ScanError line "" "Some weird number scanning issue")))))
          (True
           (Err (ScanError line "" (<> "Unexpected character: " (into c)))))))))
 
