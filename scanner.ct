@@ -3,6 +3,7 @@
     (:local-nicknames
       (#:str   #:coalton/string)
       (#:iter  #:coalton/iterator)
+
       (#:list  #:coalton/list)
       (#:char  #:coalton/char)
       (#:utils #:colox/utils))
@@ -194,11 +195,20 @@
             ((Ok (Tuple3 lexeme val rest))
              (emit (Token TT-Number lexeme (LT-Number val) line) line rest))
             (_ (Err (ScanError line "" "Some weird number scanning issue")))))
+         ((is-lox-alphanumeric? c)
+          (match (consume-identifier line (Cons c rest))
+           ((Tuple t rest) (emit t line rest))))
          (True
           (Err (ScanError line "" (<> "Unexpected character: " (into c)))))))))
 
   (define (str-to-chars s)
     (iter:collect! (str:chars s)))
+
+  (declare parse-float (String -> F64))
+  (define (parse-float s)
+    (lisp (-> F64) (s)
+     (cl:let ((cl:*read-default-float-format* 'cl:double-float))
+       (cl:coerce (cl:read-from-string s) 'cl:double-float))))
 
   (declare consume-num-helper (List Char -> (Tuple (List Char) (List Char))))
   (define (consume-num-helper lexemes)
@@ -206,12 +216,6 @@
       ((Some i)
        (list:split-at i lexemes))
       (_ (Tuple lexemes Nil))))
-
-  (declare parse-float (String -> F64))
-  (define (parse-float s)
-    (lisp (-> F64) (s)
-     (cl:let ((cl:*read-default-float-format* 'cl:double-float))
-       (cl:coerce (cl:read-from-string s) 'cl:double-float))))
 
   (declare consume-num (Integer * List Char -> Result ScanError (Tuple3 String F64 (List Char))))
   (define (consume-num line lexemes)
@@ -227,10 +231,55 @@
 
       ((Tuple int-chars rest)
        (let ((str (the String (into int-chars))))
-         (Ok (Tuple3 str (parse-float str) rest)))))))
+         (Ok (Tuple3 str (parse-float str) rest))))))
+
+  (declare keyword-type (String -> Optional TokenType))
+  (define (keyword-type s)
+    (match s
+      ("and"    (Some TT-And))
+      ("class"  (Some TT-Class))
+      ("else"   (Some TT-Else))
+      ("false"  (Some TT-False))
+      ("for"    (Some TT-For))
+      ("fun"    (Some TT-Fun))
+      ("if"     (Some TT-If))
+      ("nil"    (Some TT-Nil))
+      ("or"     (Some TT-Or))
+      ("print"  (Some TT-Print))
+      ("return" (Some TT-Return))
+      ("super"  (Some TT-Super))
+      ("this"   (Some TT-This))
+      ("true"   (Some TT-True))
+      ("var"    (Some TT-Var))
+      ("while"  (Some TT-While))
+      (_        None)))
+
+  (declare is-lox-alphanumeric? (Char -> Boolean))
+  (define (is-lox-alphanumeric? c)
+    (or (== #\_ c) (char:ascii-alphanumeric? c)))
+
+  (declare consume-identifier-helper (List Char -> Tuple (List Char) (List Char)))
+  (define (consume-identifier-helper lexemes)
+    (match (list:findindex (fn (x) (boolean-not (is-lox-alphanumeric? x))) lexemes)
+      ((Some i) (list:split-at i lexemes))
+      (_ (Tuple lexemes Nil))))
+
+  (declare consume-identifier (Integer * List Char -> Tuple Token (List Char)))
+  (define (consume-identifier line lexemes)
+    (match (consume-identifier-helper lexemes)
+      ((Tuple identifier rest)
+       (match (keyword-type (the String (into identifier)))
+         ((Some kt)
+          (Tuple (Token kt (the String (into identifier)) LT-None line) rest))
+         (_
+          (Tuple (Token TT-Identifier (the String (into identifier)) LT-None line) rest)))))))
 
 
 
+(coalton (consume-identifier 0 (str-to-chars "or chid123_ k")))
+(coalton (consume-identifier 0 (str-to-chars "_or_chid123_ k")))
+(coalton (consume-identifier-helper (str-to-chars "_or_chid123_ k")))
+(coalton (consume-identifier-helper (str-to-chars "or_chid123 k")))
 (coalton (consume-num 0 (str-to-chars "3.abc")))
 (coalton (consume-num 0 (str-to-chars "3.1245V0abc")))
 (coalton (the String (str-to-chars "abc")))
@@ -239,6 +288,7 @@
 (coalton (consume-num-helper (str-to-chars "1234.5678")))
 (coalton (consume-num-helper (str-to-chars "1234bc")))
 (coalton (get-tokens "var language = \"lox\";"))
+(coalton (get-tokens "var language = (true or false);"))
 (coalton (get-tokens "1!"))
 (coalton (get-tokens "\"lox\""))
 (coalton (get-tokens "!!=//!!;
