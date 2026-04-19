@@ -42,4 +42,14 @@
 
 )
 
-(coalton (utils:report 123 "a" "1"))
+(cl:defun cli-entry ()
+  (cl:let ((args (uiop:command-line-arguments)))
+    (cl:cond
+      ((cl:null args)
+       (coalton (run-prompt Unit)))
+      ((cl:= 1 (cl:length args))
+       (cl:format cl:t "TODO: run-file ~A~%" (cl:first args)))
+      (cl:t
+       (cl:format cl:t "Usage: colox [script]~%")
+       (uiop:quit 64))))
+  (uiop:quit 0))
