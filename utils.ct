@@ -1,0 +1,11 @@
+(defpackage #:colox/utils
+  (:use #:coalton #:coalton-prelude)
+  (:export #:report))
+
+(in-package #:colox/utils)
+
+(coalton-toplevel
+  (declare report (Integer * String * String -> Void))
+  (define (report line where message)
+    (let ((line-s (the String (into line))))
+      (print (mconcat (make-list "[line " line-s "] Error " where ": " message))))))

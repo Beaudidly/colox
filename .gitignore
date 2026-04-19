@@ -1,0 +1,48 @@
+# Coalton / Common Lisp
+*.fasl
+*.o
+*.so
+*.dylib
+*.a
+*.lib
+*.dll
+*.exe
+
+# ASDF
+.asdf-cache/
+**/asdf-cache/
+asdf-output-translations.lisp
+
+# SLIME
+.slime-cache
+*~
+.#*
+
+# Playground
+playground/
+.playground/
+playground-output/
+
+# Build artifacts
+build/
+dist/
+*.qlc
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.env
+.env.local
+
+# REPL / Emacs
+*.elc
+.emacs.d/elpa/
+
+# Temporary files
+*.tmp
+*.bak
+*.orig

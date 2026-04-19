@@ -1,0 +1,45 @@
+(defpackage #:colox/core
+  (:local-nicknames (#:str #:coalton/string)
+                    (#:file #:coalton-library/file)
+                    (#:iter #:coalton/iterator)
+                    (#:utils #:colox/utils))
+  (:use #:coalton #:coalton-prelude)
+  (:export #:hello
+           #:run-prompt
+           #:cli-entry))
+
+(in-package #:colox/core)
+
+(coalton-toplevel
+  ;(declare run-file (String -> Result String String))
+  ;(define (run-file path)
+  ;  (do
+  ;    (c <- (map-fst (const "file failure") (file:read-file-to-string path)))
+  ;    (run c)))
+
+  (declare run-prompt (Unit -> Result String String))
+  (define (run-prompt _)
+    (progn
+      (line-looper Unit)
+      (Ok "stuff")))
+
+  (declare line-looper (Unit -> Unit))
+  (define (line-looper _)
+    (match (read-line Unit)
+      ("" Unit)
+      (line
+       (progn
+	 (run line)
+	 (line-looper Unit)))))
+
+  (declare read-line (Unit -> String))
+  (define (read-line _)
+    (lisp (-> String) () (cl:read-line)))
+
+  (declare run (String -> Result String String))
+  (define (run content)
+    (Ok (<> "running content " content)))
+
+)
+
+(coalton (utils:report 123 "a" "1"))

@@ -1,0 +1,256 @@
+(defpackage #:colox/scanner
+    (:use #:coalton #:coalton-prelude)
+    (:local-nicknames
+      (#:str   #:coalton/string)
+      (#:iter  #:coalton/iterator)
+      (#:list  #:coalton/list)
+      (#:char  #:coalton/char)
+      (#:utils #:colox/utils))
+    (:export
+      #:Token
+      #:scan-tokens))
+
+(in-package #:colox/scanner)
+
+(coalton-toplevel
+  (define-type TokenType
+    ;; Single-character tokens.
+    TT-LeftParen TT-RightParen TT-LeftBrace TT-RightBrace
+    TT-Comma TT-Dot TT-Minus TT-Plus TT-Semicolon TT-Slash TT-Star
+
+    ;; One or two character tokens.
+    TT-Bang    TT-BangEqual
+    TT-Equal   TT-EqualEqual
+    TT-Greater TT-GreaterEqual
+    TT-Less    TT-LessEqual
+
+    ;; Literals.
+    TT-Identifier TT-String TT-Number
+
+    ;; Keywords.
+    TT-And TT-Class TT-Else TT-False TT-Fun TT-For TT-If TT-Nil TT-Or
+    TT-Print TT-Return TT-Super TT-This TT-True TT-Var TT-While
+
+    TT-EOF))
+
+(coalton-toplevel
+  (define-instance (Show TokenType)
+    (define (show-to f tt)
+      (f
+        (match tt
+          ((TT-LeftParen)    "LEFT_PAREN")
+          ((TT-RightParen)   "RIGHT_PAREN")
+          ((TT-LeftBrace)    "LEFT_BRACE")
+          ((TT-RightBrace)   "RIGHT_BRACE")
+          ((TT-Comma)        "COMMA")
+          ((TT-Dot)          "DOT")
+          ((TT-Minus)        "MINUS")
+          ((TT-Plus)         "PLUS")
+          ((TT-Semicolon)    "SEMICOLON")
+          ((TT-Slash)        "SLASH")
+          ((TT-Star)         "STAR")
+          ((TT-Bang)         "BANG")
+          ((TT-BangEqual)    "BANG_EQUAL")
+          ((TT-Equal)        "EQUAL")
+          ((TT-EqualEqual)   "EQUAL_EQUAL")
+          ((TT-Greater)      "GREATER")
+          ((TT-GreaterEqual) "GREATER_EQUAL")
+          ((TT-Less)         "LESS")
+          ((TT-LessEqual)    "LESS_EQUAL")
+          ((TT-Identifier)   "IDENTIFIER")
+          ((TT-String)       "STRING")
+          ((TT-Number)       "NUMBER")
+          ((TT-And)          "AND")
+          ((TT-Class)        "CLASS")
+          ((TT-Else)         "ELSE")
+          ((TT-False)        "FALSE")
+          ((TT-Fun)          "FUN")
+          ((TT-For)          "FOR")
+          ((TT-If)           "IF")
+          ((TT-Nil)          "NIL")
+          ((TT-Or)           "OR")
+          ((TT-Print)        "PRINT")
+          ((TT-Return)       "RETURN")
+          ((TT-Super)        "SUPER")
+          ((TT-This)         "THIS")
+          ((TT-True)         "TRUE")
+          ((TT-Var)          "VAR")
+          ((TT-While)        "WHILE")
+          ((TT-EOF)          "EOF")))))
+
+  (define-type Literal
+    (LT-String String)
+    (LT-Number F64)
+    LT-None)
+
+  (define-instance (Show Literal)
+    (define (show-to f lit)
+      (match lit
+        ((LT-String s) (f s))
+        ((LT-Number n) (show-to f n))
+        ((LT-None)     (f "")))))
+
+  (define-struct Token
+    (type TokenType)
+    (lexeme String)
+    (literal Literal)
+    (line Integer))
+
+  (define-instance (Show Token)
+    (define (show-to f t)
+      (show-to f (.type t))
+      (f " ")
+      (f (.lexeme t))
+      (f " ")
+      (show-to f (.literal t))))
+
+  (define-struct ScanError
+    (Line Integer)
+    (Where String)
+    (What String)))
+
+
+
+(coalton-toplevel
+  (declare get-tokens (String -> Result ScanError (List Token)))
+  (define (get-tokens s)
+    (get-tokens-x 0 (iter:collect! (str:chars s))))
+
+  (declare advance-to (Char * List Char -> List Char))
+  (define (advance-to c lst)
+    (match (list:findindex (fn (x) (== x c) ) lst)
+      ((Some i)
+       (snd (list:split-at i lst)))
+      (_ Nil)))
+
+  (declare consume-str (List Char -> Optional (Tuple String (List Char))))
+  (define (consume-str lst)
+    (match (list:findindex (fn (x) (== x #\")) lst)
+      ((Some i)
+       (match (list:split-around i lst)
+         ((Tuple3 before _ after)
+          (Some (Tuple (the String (into before)) after)))))
+      ((None) None)))
+
+  (declare emit (Token * Integer * List Char
+                       -> Result ScanError (List Token)))
+  (define (emit tok line rest)
+    (do (toks <- (get-tokens-x line rest))
+        (pure (Cons tok toks))))
+
+  (declare get-tokens-x (Integer * List Char -> Result ScanError (List Token)))
+  (define (get-tokens-x line lexemes)
+    (match lexemes
+      ((Nil) (Ok Nil))
+
+      ;; Double char (must precede their single-char counterparts)
+      ((Cons #\/ (Cons #\/ rest))
+       (get-tokens-x line (advance-to #\NewLine rest)))
+      ((Cons #\! (Cons #\= rest))
+       (emit (Token TT-BangEqual    "!=" LT-None line) line rest))
+      ((Cons #\= (Cons #\= rest))
+       (emit (Token TT-EqualEqual   "==" LT-None line) line rest))
+      ((Cons #\< (Cons #\= rest))
+       (emit (Token TT-LessEqual    "<=" LT-None line) line rest))
+      ((Cons #\> (Cons #\= rest))
+       (emit (Token TT-GreaterEqual ">=" LT-None line) line rest))
+
+      ;; Whitespace
+      ((Cons #\Space rest) (get-tokens-x line rest))
+      ((Cons #\Return rest) (get-tokens-x line rest))
+      ((Cons #\Tab rest) (get-tokens-x line rest))
+      ((Cons #\NewLine rest) (get-tokens-x (+ line 1) rest))
+
+      ;; Single char
+      ((Cons #\/ rest) (emit (Token TT-Slash      "/" LT-None line) line rest))
+      ((Cons #\( rest) (emit (Token TT-LeftParen  "(" LT-None line) line rest))
+      ((Cons #\) rest) (emit (Token TT-RightParen ")" LT-None line) line rest))
+      ((Cons #\{ rest) (emit (Token TT-LeftBrace  "{" LT-None line) line rest))
+      ((Cons #\} rest) (emit (Token TT-RightBrace "}" LT-None line) line rest))
+      ((Cons #\, rest) (emit (Token TT-Comma      "," LT-None line) line rest))
+      ((Cons #\. rest) (emit (Token TT-Dot        "." LT-None line) line rest))
+      ((Cons #\- rest) (emit (Token TT-Minus      "-" LT-None line) line rest))
+      ((Cons #\+ rest) (emit (Token TT-Plus       "+" LT-None line) line rest))
+      ((Cons #\; rest) (emit (Token TT-Semicolon  ";" LT-None line) line rest))
+      ((Cons #\* rest) (emit (Token TT-Star       "*" LT-None line) line rest))
+      ((Cons #\! rest) (emit (Token TT-Bang       "!" LT-None line) line rest))
+      ((Cons #\= rest) (emit (Token TT-Equal      "=" LT-None line) line rest))
+      ((Cons #\< rest) (emit (Token TT-Less       "<" LT-None line) line rest))
+      ((Cons #\> rest) (emit (Token TT-Greater    ">" LT-None line) line rest))
+
+      ;; String
+      ((Cons #\" rest)
+       (match (consume-str rest)
+        ((Some (Tuple s new-rest))
+         (emit (Token TT-String s (LT-String s) line) line new-rest))
+        (_
+         (Err (ScanError line "" "Unterminated string.")))))
+
+      ((Cons c rest)
+       (cond
+         ((char:ascii-digit? c)
+          (match (consume-num line (Cons c rest))
+            ((Ok (Tuple3 lexeme val rest))
+             (emit (Token TT-Number lexeme (LT-Number val) line) line rest))))
+         (True
+          (Err (ScanError line "" (<> "Unexpected character: " (into c)))))))))
+
+  (define (str-to-chars s)
+    (iter:collect! (str:chars s)))
+
+  (declare consume-num-helper (List Char -> (Tuple (List Char) (List Char))))
+  (define (consume-num-helper lexemes)
+    (match (list:findindex (fn (x) (boolean-not (char:ascii-digit? x))) lexemes)
+      ((Some i)
+       (list:split-at i lexemes))
+      (_ (Tuple lexemes Nil))))
+
+  (declare parse-float (String -> F64))
+  (define (parse-float s)
+    (lisp (-> F64) (s)
+     (cl:let ((cl:*read-default-float-format* 'cl:double-float))
+       (cl:coerce (cl:read-from-string s) 'cl:double-float))))
+
+  (declare consume-num (Integer * List Char -> Result ScanError (Tuple3 String F64 (List Char))))
+  (define (consume-num line lexemes)
+    (match (consume-num-helper lexemes)
+      ((Tuple int-chars (Cons #\. (Cons d rest-after-dot)))
+       (cond
+         ((not (char:ascii-digit? d)) (Err (ScanError line "" "Digit dot non-digit not accepted")))
+         (true (match (consume-num-helper (Cons d rest-after-dot))
+                 ((Tuple frac-chars rest)
+                  (let ((num-chars (<> int-chars (Cons #\. frac-chars)))
+                        (str       (the String (into num-chars))))
+                    (Ok (Tuple3 str (parse-float str) rest))))))))
+
+      ((Tuple int-chars rest)
+       (let ((str (the String (into int-chars))))
+         (Ok (Tuple3 str (parse-float str) rest)))))))
+
+
+
+(coalton (consume-num 0 (str-to-chars "3.abc")))
+(coalton (consume-num 0 (str-to-chars "3.1245V0abc")))
+(coalton (the String (str-to-chars "abc")))
+(coalton (the String (into (fst (consume-num-helper (str-to-chars "1234.5678"))))))
+(coalton (consume-num-helper (str-to-chars "1234")))
+(coalton (consume-num-helper (str-to-chars "1234.5678")))
+(coalton (consume-num-helper (str-to-chars "1234bc")))
+(coalton (get-tokens "var language = \"lox\";"))
+(coalton (get-tokens "1!"))
+(coalton (get-tokens "\"lox\""))
+(coalton (get-tokens "!!=//!!;
+!= 1.0"))
+(coalton (get-tokens "!*+-/=<> <= == // operators"))
+(coalton (get-tokens (mconcat (make-list "!!=//!!"
+                                          (the String (into #\Newline))
+                                          "!="))))
+(coalton (advance-to #\Newline (iter:collect! (str:chars "abcd\nefgh"))))
+(coalton (advance-to #\n (iter:collect! (str:chars "abcd\nefgh"))))
+(coalton (list:length
+             (advance-to #\n (iter:collect! (str:chars "abcd\nefgh")))))
+(coalton (list:findindex (fn (x) (== x #\n))
+                         (iter:collect! (str:chars "abcd\nefgh"))))
+(coalton (advance-to #\Newline
+                       (make-list #\a #\b #\Newline #\c #\d)))
+(coalton (consume-str (iter:collect! (str:chars "adkljasdkljadwow"))))
